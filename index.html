@@ -1,0 +1,471 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  QrCode, Camera, Plus, Instagram, Phone, Mail, User, Briefcase,
+  Layers, History, X, Settings2, Trash2, Globe, Edit2, MapPin,
+  Check, Share2, Zap, Sparkles, Link2, Download, ChevronRight, Eye, EyeOff,
+  UserPlus, ExternalLink
+} from 'lucide-react';
+
+/**
+ * PWA Service Worker Registration
+ */
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('wallet');
+  const [activeProfileIdx, setActiveProfileIdx] = useState(0); 
+  const [profileImage, setProfileImage] = useState(null);
+  const [isAddingLink, setIsAddingLink] = useState(false);
+  const [newLinkDraft, setNewLinkDraft] = useState(null); 
+  const [editingField, setEditingField] = useState(null); 
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [showQuickShare, setShowQuickShare] = useState(false);
+  const fileInputRef = useRef(null);
+
+  // Categories for new links
+  const linkCategories = [
+    { type: 'website', label: 'Website', icon: <Globe size={18}/>, color: 'bg-blue-500' },
+    { type: 'social', label: 'Social Media', icon: <Share2 size={18}/>, color: 'bg-indigo-500' },
+    { type: 'email', label: 'Email Address', icon: <Mail size={18}/>, color: 'bg-rose-500' },
+    { type: 'maps', label: 'Location/Map', icon: <MapPin size={18}/>, color: 'bg-emerald-500' }
+  ];
+
+  useEffect(() => {
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    }
+  };
+
+  const [profiles, setProfiles] = useState([
+    {
+      id: 'prof',
+      type: 'Professional',
+      name: 'Purti Sharma',
+      tagline: "Scan to view my work profile and professional details.",
+      color: 'from-slate-900 via-slate-800 to-slate-900',
+      accent: 'text-blue-400',
+      bgAccent: 'bg-blue-500/10',
+      links: [
+        { id: 'li', icon: <Briefcase size={18}/>, label: 'Work Profile', value: 'professional-profile.com/purti', visible: true },
+        { id: 'em', icon: <Mail size={18}/>, label: 'Work Email', value: 'purti@pyngit.com', visible: false },
+        { id: 'pf', icon: <Globe size={18}/>, label: 'Portfolio', value: 'purti.design', visible: false }
+      ]
+    },
+    {
+      id: 'social',
+      type: 'Personal',
+      name: 'Purti Sharma',
+      tagline: 'Connect with me for a quick chat or social update.',
+      color: 'from-indigo-600 to-purple-700',
+      accent: 'text-purple-300',
+      bgAccent: 'bg-purple-500/10',
+      links: [
+        { id: 'ig', icon: <Instagram size={18}/>, label: 'Instagram', value: '@purti_sharma', visible: true },
+        { id: 'wa', icon: <Phone size={18}/>, label: 'WhatsApp', value: '+91 9876543210', visible: false }
+      ]
+    }
+  ]);
+
+  const current = profiles[activeProfileIdx];
+  const activeLink = current.links.find(l => l.visible);
+
+  const generateQrPattern = () => {
+    const seed = (activeLink ? activeLink.value : 'none') + current.id;
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const hex = Math.abs(hash).toString(16).padEnd(25, 'f');
+    return hex.split('').map(char => parseInt(char, 16) > 7);
+  };
+
+  const handleProfileUpdate = (field, value) => {
+    setProfiles(prev => {
+      const updated = [...prev];
+      updated[activeProfileIdx] = { ...updated[activeProfileIdx], [field]: value };
+      return updated;
+    });
+  };
+
+  const toggleLinkVisibility = (linkId) => {
+    setProfiles(prev => {
+      const updated = [...prev];
+      updated[activeProfileIdx].links = updated[activeProfileIdx].links.map(link => {
+        if (link.id === linkId) {
+          return { ...link, visible: !link.visible };
+        } else {
+          return { ...link, visible: false };
+        }
+      });
+      return updated;
+    });
+  };
+
+  const startNewLink = (category) => {
+    setNewLinkDraft({
+      type: category.type,
+      label: '', 
+      value: '',
+      icon: category.icon,
+      visible: false,
+      placeholder: category.type === 'email' ? 'Enter email address' : 'Enter URL or username'
+    });
+  };
+
+  const saveNewLink = () => {
+    if (!newLinkDraft.label || !newLinkDraft.value) return;
+    setProfiles(prev => {
+      const updated = [...prev];
+      const newLinks = [...updated[activeProfileIdx].links, { ...newLinkDraft, id: Date.now() }];
+      updated[activeProfileIdx].links = newLinks;
+      return updated;
+    });
+    setNewLinkDraft(null);
+    setIsAddingLink(false);
+  };
+
+  const removeLink = (id, e) => {
+    e.stopPropagation();
+    setProfiles(prev => {
+      const updated = [...prev];
+      updated[activeProfileIdx].links = updated[activeProfileIdx].links.filter(l => l.id !== id);
+      return updated;
+    });
+  };
+
+  return (
+    <div className="flex flex-col h-screen max-w-md mx-auto bg-white font-sans text-slate-900 overflow-hidden shadow-2xl relative">
+      
+      {/* App Header */}
+      <div className="pt-8 px-6 pb-2 flex justify-between items-center bg-white sticky top-0 z-30 border-b border-slate-50">
+        <h1 className="text-2xl font-black tracking-tighter text-slate-900 italic">
+          PYNG<span className="text-blue-600">ME</span>
+        </h1>
+        <div className="flex items-center gap-2">
+            {deferredPrompt && (
+              <button 
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded-full shadow-lg shadow-blue-200 active:scale-95 transition-all"
+              >
+                <Download size={10} />
+                <span className="text-[9px] font-black uppercase tracking-widest">Install</span>
+              </button>
+            )}
+            <div className="flex items-center gap-2 bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
+                <Zap size={10} className="text-blue-600 fill-blue-600" />
+                <span className="text-[9px] font-black uppercase text-blue-600 tracking-widest">{current.type}</span>
+            </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-6 pb-32">
+        {activeTab === 'wallet' && (
+          <div className="space-y-6 animate-in fade-in duration-500">
+            
+            {/* Quick Connect Trigger */}
+            <div className="mt-4 p-4 bg-gradient-to-r from-blue-600 to-indigo-700 rounded-[24px] shadow-lg shadow-blue-100 relative overflow-hidden group cursor-pointer active:scale-[0.98] transition-transform"
+                 onClick={() => setShowQuickShare(true)}>
+                <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:scale-110 transition-transform">
+                  <Zap size={60} />
+                </div>
+                <div className="flex items-center gap-2 mb-1.5">
+                    <Sparkles size={14} className="text-blue-200 fill-blue-200" />
+                    <h3 className="text-[10px] font-black uppercase tracking-widest text-white/90">Instant Exchange</h3>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <p className="text-[12px] font-bold text-white leading-snug italic relative z-10">
+                     "{current.tagline}"
+                  </p>
+                  <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md">
+                    <QrCode size={20} className="text-white" />
+                  </div>
+                </div>
+            </div>
+
+            {/* Quick Share Modal Overlay */}
+            {showQuickShare && (
+              <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in zoom-in duration-300">
+                <div className="bg-white w-full rounded-[48px] p-8 relative shadow-2xl overflow-hidden">
+                  <button onClick={() => setShowQuickShare(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full text-slate-400 hover:text-slate-900">
+                    <X size={20} />
+                  </button>
+                  
+                  <div className="flex flex-col items-center text-center space-y-6">
+                    <div className="space-y-2">
+                      <h2 className="text-2xl font-black italic tracking-tighter">PYNG<span className="text-blue-600">ME</span></h2>
+                      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scan to View Info</p>
+                    </div>
+
+                    <div className="p-8 bg-slate-50 rounded-[48px] border-2 border-slate-100 shadow-inner">
+                      <div className="grid grid-cols-5 gap-1.5 w-40 h-40">
+                         {generateQrPattern().slice(0, 25).map((isActive, i) => (
+                           <div key={i} className={`rounded-sm ${isActive ? 'bg-slate-900' : 'bg-slate-200'}`} />
+                         ))}
+                       </div>
+                    </div>
+
+                    <div className="space-y-4 w-full">
+                      <div className="flex items-center justify-center gap-3 bg-blue-50 py-3 px-4 rounded-2xl border border-blue-100">
+                        <div className="text-blue-600">{activeLink?.icon}</div>
+                        <p className="text-xs font-black uppercase tracking-widest text-blue-700">{activeLink?.label || 'Profile Page'}</p>
+                      </div>
+                      
+                      <div className="flex flex-col gap-2">
+                        <button className="w-full bg-slate-900 text-white py-4 rounded-3xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all">
+                          <UserPlus size={16} /> Save to Contacts
+                        </button>
+                        <button className="w-full bg-slate-100 text-slate-600 py-4 rounded-3xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-2 active:scale-95 transition-all">
+                          <ExternalLink size={16} /> Open {activeLink?.label || 'Link'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Profile Section */}
+            <div className="flex flex-col items-center pt-2 text-center">
+              <div className="relative">
+                <div className="w-24 h-24 rounded-[32px] border-4 border-white shadow-xl overflow-hidden bg-slate-100 rotate-2">
+                  {profileImage ? (
+                    <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-300">
+                      <User size={32} />
+                    </div>
+                  )}
+                </div>
+                <button onClick={() => fileInputRef.current.click()} className="absolute -bottom-1 -right-1 p-2 bg-slate-900 text-white rounded-xl shadow-lg border-2 border-white active:scale-90 transition-transform">
+                  <Camera size={14} />
+                </button>
+                <input type="file" ref={fileInputRef} onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setProfileImage(reader.result);
+                    reader.readAsDataURL(file);
+                  }
+                }} className="hidden" accept="image/*" />
+              </div>
+
+              <div className="mt-4 w-full px-4 flex flex-col items-center">
+                {editingField?.id === 'name' ? (
+                  <input 
+                    autoFocus 
+                    className="w-full text-center text-xl font-black tracking-tight text-slate-900 bg-slate-50 border-b-2 border-slate-900 outline-none" 
+                    value={current.name} 
+                    onChange={(e) => handleProfileUpdate('name', e.target.value)} 
+                    onBlur={() => setEditingField(null)} 
+                  />
+                ) : (
+                  <div onClick={() => setEditingField({id: 'name'})} className="group flex items-center justify-center gap-2 cursor-pointer">
+                    <h2 className="text-xl font-black tracking-tight text-slate-900">{current.name}</h2>
+                    <Edit2 size={12} className="text-slate-300 opacity-0 group-hover:opacity-100" />
+                  </div>
+                )}
+                <div className="mt-1 flex items-center justify-center gap-1.5 opacity-60">
+                    <Link2 size={10} className="text-slate-400" />
+                    <p className="text-slate-500 font-bold text-[9px] uppercase tracking-widest">Digital Card • Ready to share</p>
+                </div>
+              </div>
+            </div>
+
+            {/* The Digital Card */}
+            <div className="relative">
+              <div onClick={() => setActiveProfileIdx(prev => prev === 0 ? 1 : 0)} className={`group cursor-pointer w-full aspect-[1.58/1] rounded-[40px] p-7 shadow-2xl bg-gradient-to-br ${current.color} text-white transition-all duration-500 relative overflow-hidden active:scale-[0.98]`}>
+                <div className="absolute -right-10 -top-10 w-48 h-48 bg-white/5 rounded-full blur-3xl"></div>
+                <div className="h-full flex relative z-10">
+                  <div className="flex-[1.2] flex flex-col justify-between py-1">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-2xl font-black tracking-tighter italic leading-none">PYNG<span className="text-blue-400">ME</span></h3>
+                        <Zap size={14} className="text-blue-400 fill-blue-400" />
+                      </div>
+                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-[0.2em] mt-1">{current.type}</p>
+                    </div>
+
+                    <div className="space-y-1.5 overflow-hidden">
+                       <p className="text-[8px] font-black uppercase text-white/30 tracking-widest mb-1">Live Sharing:</p>
+                       <div className="flex flex-wrap gap-1.5">
+                         {activeLink ? (
+                             <div key={activeLink.id} className="flex items-center gap-2 bg-white/10 backdrop-blur-md rounded-lg py-2 px-3 border border-white/5 animate-in zoom-in-95">
+                                <span className="opacity-90">{activeLink.icon}</span>
+                                <span className="text-[11px] font-bold tracking-tight truncate max-w-[120px]">{activeLink.label}</span>
+                             </div>
+                         ) : (
+                           <div className="flex items-center gap-2 bg-rose-500/20 backdrop-blur-md rounded-lg py-2 px-3 w-fit border border-rose-500/20">
+                             <X size={12} className="text-rose-400" />
+                             <span className="text-[10px] font-medium text-rose-200 italic">Vault is Private</span>
+                           </div>
+                         )}
+                       </div>
+                    </div>
+                    <p className="text-[11px] font-black uppercase tracking-tight truncate">{current.name}</p>
+                  </div>
+
+                  <div className="flex-1 flex items-center justify-end">
+                    <div className={`p-4 bg-white rounded-[32px] shadow-2xl transform group-hover:rotate-3 transition-all duration-500 ${!activeLink ? 'opacity-30 grayscale blur-[1px]' : ''}`}>
+                       <div className="grid grid-cols-5 gap-0.5 w-20 h-20">
+                         {generateQrPattern().slice(0, 25).map((isActive, i) => (
+                           <div key={i} className={`rounded-[2px] ${isActive ? 'bg-slate-900' : 'bg-slate-100'}`} />
+                         ))}
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Link Vault */}
+            <div className="space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <div className="flex items-center gap-2">
+                  <Settings2 size={12} className="text-slate-400" />
+                  <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Profile Vault</h4>
+                </div>
+                <button 
+                  onClick={() => { setIsAddingLink(!isAddingLink); setNewLinkDraft(null); }} 
+                  className={`px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${isAddingLink ? 'bg-slate-100 text-slate-500' : 'bg-blue-600 text-white shadow-lg shadow-blue-100'}`}
+                >
+                  {isAddingLink ? 'Close' : '+ Add Profile'}
+                </button>
+              </div>
+
+              {/* Add Link Module */}
+              {isAddingLink && (
+                <div className="bg-slate-50 p-4 rounded-[32px] border border-slate-200 border-dashed animate-in slide-in-from-top-4">
+                  {!newLinkDraft ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      {linkCategories.map((cat) => (
+                        <button 
+                          key={cat.type} 
+                          onClick={() => startNewLink(cat)}
+                          className="flex items-center gap-3 p-3 bg-white rounded-2xl hover:shadow-md transition-all active:scale-95 border border-slate-100"
+                        >
+                          <div className={`p-2 rounded-xl text-white ${cat.color}`}>{cat.icon}</div>
+                          <span className="text-[10px] font-black uppercase tracking-tight text-slate-700">{cat.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4 animate-in fade-in">
+                      <div className="bg-white p-4 rounded-3xl border border-slate-100 space-y-4">
+                        <div className="flex items-center gap-3 border-b border-slate-50 pb-3">
+                           <div className="p-2 bg-blue-50 text-blue-600 rounded-xl">{newLinkDraft.icon}</div>
+                           <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400">New {newLinkDraft.type} Item</h5>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Label Name</label>
+                            <input 
+                              placeholder="e.g. Work Portfolio"
+                              className="w-full bg-slate-50 rounded-xl px-4 py-3 text-xs font-bold outline-none ring-blue-500/20 focus:ring-2"
+                              value={newLinkDraft.label}
+                              onChange={(e) => setNewLinkDraft({...newLinkDraft, label: e.target.value})}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black uppercase text-slate-400 ml-1">Value / Link</label>
+                            <input 
+                              placeholder={newLinkDraft.placeholder}
+                              className="w-full bg-slate-50 rounded-xl px-4 py-3 text-xs font-medium outline-none ring-blue-500/20 focus:ring-2"
+                              value={newLinkDraft.value}
+                              onChange={(e) => setNewLinkDraft({...newLinkDraft, value: e.target.value})}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setNewLinkDraft(null)} 
+                          className="flex-1 py-3 bg-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest active:scale-95"
+                        >
+                          Back
+                        </button>
+                        <button 
+                          onClick={saveNewLink}
+                          disabled={!newLinkDraft.label || !newLinkDraft.value}
+                          className={`flex-[2] py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 ${(!newLinkDraft.label || !newLinkDraft.value) ? 'bg-slate-100 text-slate-400' : 'bg-blue-600 text-white shadow-blue-200'}`}
+                        >
+                          Save Item
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="bg-slate-50 rounded-[32px] p-2 border border-slate-100 space-y-1.5">
+                {current.links.map((link) => {
+                  return (
+                    <div key={link.id} className={`group bg-white rounded-[24px] p-3 shadow-sm border transition-all ${link.visible ? 'border-blue-200 ring-2 ring-blue-100' : 'border-slate-100'}`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1 overflow-hidden">
+                          <div className={`p-3 rounded-2xl transition-all ${link.visible ? current.bgAccent + ' ' + current.accent : 'bg-slate-50 text-slate-400 opacity-50'}`}>
+                            {link.icon}
+                          </div>
+                          <div className="flex-1 overflow-hidden">
+                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 leading-none mb-1">{link.label}</p>
+                            <p className="text-xs font-bold tracking-tight text-slate-800 truncate">{link.value}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-1 ml-2">
+                          <button 
+                            onClick={() => toggleLinkVisibility(link.id)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all active:scale-90 ${link.visible ? 'bg-blue-600 text-white shadow-md shadow-blue-100' : 'bg-slate-100 text-slate-400'}`}
+                          >
+                            {link.visible ? <Eye size={12} /> : <EyeOff size={12} />}
+                            <span className="text-[8px] font-black uppercase tracking-widest">{link.visible ? 'ON' : 'OFF'}</span>
+                          </button>
+                          
+                          <button onClick={(e) => removeLink(link.id, e)} className="p-2 text-slate-200 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Persistent Bottom Nav */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-2xl border-t border-slate-100 px-10 py-5 flex justify-around items-center z-40">
+        <button onClick={() => setActiveTab('wallet')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'wallet' ? 'text-slate-900' : 'text-slate-300'}`}>
+          <Layers size={20} strokeWidth={3} />
+          <span className="text-[7px] font-black uppercase tracking-widest">Vault</span>
+        </button>
+        <button onClick={() => setShowQuickShare(true)} className="w-16 h-16 rounded-[24px] flex items-center justify-center text-white shadow-2xl -mt-12 border-[6px] border-white bg-blue-600 active:scale-95 transition-all">
+          <QrCode size={28} />
+        </button>
+        <button onClick={() => setActiveTab('history')} className={`flex flex-col items-center gap-1.5 ${activeTab === 'history' ? 'text-slate-900' : 'text-slate-300'}`}>
+          <History size={20} strokeWidth={3} />
+          <span className="text-[7px] font-black uppercase tracking-widest">Recent</span>
+        </button>
+      </div>
+
+      <style dangerouslySetInnerHTML={{ __html: `::-webkit-scrollbar { display: none; } * { -ms-overflow-style: none; scrollbar-width: none; }`}} />
+    </div>
+  );
+}
